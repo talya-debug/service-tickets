@@ -90,9 +90,15 @@ function TicketCard({ ticket, onResolve }) {
           <h3 className="font-semibold text-slate-800">{ticket.name}</h3>
           <p className="text-sm text-slate-400">{date}</p>
         </div>
-        <span className={`text-xs font-medium px-3 py-1 rounded-full ${isOpen ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-          {isOpen ? 'פתוח' : 'טופל'}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`text-xs font-medium px-3 py-1 rounded-full ${isOpen ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+            {isOpen ? 'פתוח' : 'טופל'}
+          </span>
+          {/* תג פרויקט */}
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+            {ticket.project || 'כללי'}
+          </span>
+        </div>
       </div>
 
       {/* תיאור */}
@@ -123,6 +129,7 @@ export default function AdminDashboard() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [tickets, setTickets] = useState([])
   const [filter, setFilter] = useState('open') // open | resolved | all
+  const [projectFilter, setProjectFilter] = useState('all') // סינון לפי פרויקט
 
   useEffect(() => {
     if (!loggedIn) return
@@ -139,10 +146,14 @@ export default function AdminDashboard() {
 
   if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />
 
-  // סינון לפי סטטוס
+  // רשימת פרויקטים ייחודיים לסינון
+  const projects = ['all', ...new Set(tickets.map((t) => t.project || 'כללי'))]
+
+  // סינון לפי סטטוס ופרויקט
   const filtered = tickets.filter((t) => {
-    if (filter === 'all') return true
-    return t.status === filter
+    const statusMatch = filter === 'all' || t.status === filter
+    const projectMatch = projectFilter === 'all' || (t.project || 'כללי') === projectFilter
+    return statusMatch && projectMatch
   })
 
   const openCount = tickets.filter((t) => t.status === 'open').length
@@ -163,8 +174,8 @@ export default function AdminDashboard() {
         </button>
       </header>
 
-      {/* סינון */}
-      <div className="px-6 py-4 flex gap-2">
+      {/* סינון לפי סטטוס */}
+      <div className="px-6 pt-4 flex gap-2 flex-wrap">
         {['open', 'resolved', 'all'].map((f) => (
           <button
             key={f}
@@ -179,6 +190,25 @@ export default function AdminDashboard() {
           </button>
         ))}
       </div>
+
+      {/* סינון לפי פרויקט */}
+      {projects.length > 2 && (
+        <div className="px-6 pb-4 pt-2 flex gap-2 flex-wrap">
+          {projects.map((p) => (
+            <button
+              key={p}
+              onClick={() => setProjectFilter(p)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
+                projectFilter === p
+                  ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+                  : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {p === 'all' ? 'כל הפרויקטים' : p}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* רשימת קריאות */}
       <div className="px-6 pb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -1,10 +1,15 @@
 // דף לקוחות — פתיחת קריאת שירות
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { sendOwnerEmail } from '../lib/email'
 
 export default function CustomerForm() {
+  // קריאת שם הפרויקט מה-URL (לדוגמה: ?project=יעל-סיסו)
+  const [searchParams] = useSearchParams()
+  const project = searchParams.get('project') || 'כללי'
+
   const [form, setForm] = useState({ name: '', email: '', phone: '', description: '' })
   const [status, setStatus] = useState('idle') // idle | loading | success | error
 
@@ -17,10 +22,11 @@ export default function CustomerForm() {
     setStatus('loading')
 
     try {
-      // שמירה ב-Firebase
+      // שמירה ב-Firebase כולל שם הפרויקט
       const docRef = await addDoc(collection(db, 'tickets'), {
         ...form,
-        status: 'open', // סטטוס: פתוח
+        project,
+        status: 'open',
         createdAt: serverTimestamp(),
       })
 
