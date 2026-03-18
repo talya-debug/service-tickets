@@ -1,17 +1,48 @@
-// דף לקוחות — פתיחת קריאת שירות
-import { useState } from 'react'
+// דף לקוחות — פתיחת קריאת שירות | TALYA OSHER
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { db, storage } from '../lib/firebase'
 import { sendOwnerEmail } from '../lib/email'
 
+async function uploadImages(files, ticketId) {
+  const urls = []
+  for (const file of files) {
+    const storageRef = ref(storage, `tickets/${ticketId}/${Date.now()}_${file.name || 'paste.png'}`)
+    await uploadBytes(storageRef, file)
+    const url = await getDownloadURL(storageRef)
+    urls.push(url)
+  }
+  return urls
+}
+
 export default function CustomerForm() {
-  // קריאת שם הפרויקט מה-URL (לדוגמה: ?project=יעל-סיסו)
   const [searchParams] = useSearchParams()
   const project = searchParams.get('project') || 'כללי'
 
   const [form, setForm] = useState({ name: '', email: '', phone: '', description: '' })
-  const [status, setStatus] = useState('idle') // idle | loading | success | error
+  const [pastedImages, setPastedImages] = useState([])
+  const [status, setStatus] = useState('idle')
+  const [ticketId, setTicketId] = useState('')
+
+  useEffect(() => {
+    function handlePaste(e) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      const imageFiles = []
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile()
+          if (file) imageFiles.push({ file, preview: URL.createObjectURL(file) })
+        }
+      }
+      if (imageFiles.length > 0)
+        setPastedImages(prev => [...prev, ...imageFiles].slice(0, 5))
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -20,124 +51,183 @@ export default function CustomerForm() {
   async function handleSubmit(e) {
     e.preventDefault()
     setStatus('loading')
-
     try {
-      // שמירה ב-Firebase כולל שם הפרויקט
+      // שמירת הטיקט — זה העיקר
       const docRef = await addDoc(collection(db, 'tickets'), {
-        ...form,
-        project,
-        status: 'open',
-        createdAt: serverTimestamp(),
+        ...form, project, status: 'open', images: [], createdAt: serverTimestamp(),
       })
 
-      // שליחת מייל לבעלת העסק
-      await sendOwnerEmail({ ...form, id: docRef.id, createdAt: { toDate: () => new Date() } })
-
+      // מציגים הצלחה מיד — לא מחכים לתמונות או מייל
+      setTicketId(docRef.id.slice(0, 6).toUpperCase())
       setStatus('success')
-      setForm({ name: '', email: '', phone: '', description: '' })
+
+      // תמונות ומייל ברקע — לא חוסמים את המשתמש
+      if (pastedImages.length > 0) {
+        uploadImages(pastedImages.map(i => i.file), docRef.id)
+          .then(urls => updateDoc(doc(db, 'tickets', docRef.id), { images: urls }))
+          .catch(err => console.warn('העלאת תמונות נכשלה:', err))
+      }
+      sendOwnerEmail({ ...form, id: docRef.id, createdAt: { toDate: () => new Date() } })
+        .catch(() => {})
+
     } catch (err) {
-      console.error('שגיאה בשמירת הקריאה:', err)
+      console.error(err)
       setStatus('error')
     }
   }
 
+  // ===== מסך הצלחה =====
   if (status === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-5xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">הקריאה נפתחה בהצלחה!</h2>
-          <p className="text-slate-500 mb-6">נחזור אליך בהקדם. תקבל מייל כשהבעיה תטופל.</p>
-          <button
-            onClick={() => setStatus('idle')}
-            className="bg-indigo-600 text-white px-6 py-2 rounded-xl hover:bg-indigo-700 transition"
-          >
-            פתח קריאה נוספת
-          </button>
+      <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+        {/* Header */}
+        <div style={{ background: '#0f172a', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 16 }}>T</div>
+          <div>
+            <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, letterSpacing: '0.15em' }}>TALYA OSHER</div>
+            <div style={{ color: '#818cf8', fontSize: 11 }}>בונים תשתיות לעסקים</div>
+          </div>
+        </div>
+        {/* Card */}
+        <div style={{ maxWidth: 480, margin: '60px auto', padding: '0 16px' }}>
+          <div style={{ background: '#fff', borderRadius: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.10)', padding: 48, textAlign: 'center', direction: 'rtl' }}>
+            <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#f0fdf4', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36 }}>✅</div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: '0 0 10px' }}>הקריאה נפתחה בהצלחה!</h2>
+            {/* מספר פנייה */}
+            <div style={{ background: '#eef2ff', borderRadius: 12, padding: '14px 20px', margin: '0 0 14px', display: 'inline-block', minWidth: 200 }}>
+              <div style={{ fontSize: 11, color: '#6366f1', fontWeight: 600, letterSpacing: '0.1em', marginBottom: 4 }}>מספר פנייה</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: '#4338ca', letterSpacing: '0.15em' }}>#{ticketId}</div>
+            </div>
+            <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.7, margin: '0 0 28px' }}>
+              קיבלנו את הפנייה שלך ונחזור אליך בהקדם.<br/>שמור את מספר הפנייה לצורך מעקב.
+            </p>
+            <button
+              onClick={() => { setForm({ name: '', email: '', phone: '', description: '' }); setPastedImages([]); setStatus('idle'); setTicketId('') }}
+              style={{ width: '100%', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 0', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+            >
+              פתח קריאה נוספת
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ===== הטופס =====
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full">
-        {/* כותרת */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-800">פתיחת קריאת שירות</h1>
-          <p className="text-slate-500 mt-1">מלא את הפרטים ונחזור אליך בהקדם</p>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+
+      {/* ===== Header ===== */}
+      <div style={{ background: '#0f172a', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 16 }}>T</div>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, letterSpacing: '0.15em' }}>TALYA OSHER</div>
+          <div style={{ color: '#818cf8', fontSize: 11 }}>בונים תשתיות לעסקים</div>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* שם מלא */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">שם מלא</label>
-            <input
-              type="text"
-              name="name"
-              value={form.name}
-              onChange={handleChange}
-              required
-              placeholder="ישראל ישראלי"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
+      {/* ===== Card ===== */}
+      <div style={{ maxWidth: 540, margin: '40px auto', padding: '0 16px' }}>
+        <div style={{ background: '#fff', borderRadius: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.10)', overflow: 'hidden', direction: 'rtl' }}>
+
+          {/* Card Header */}
+          <div style={{ background: 'linear-gradient(135deg, #6366f1, #4338ca)', padding: '28px 32px' }}>
+            <span style={{ display: 'inline-block', background: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 12, fontWeight: 600, padding: '4px 14px', borderRadius: 20, marginBottom: 12 }}>
+              {project}
+            </span>
+            <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: '0 0 6px' }}>פתיחת קריאת שירות</h1>
+            <p style={{ color: '#c7d2fe', fontSize: 13, margin: 0 }}>מלא את הפרטים ונחזור אליך בהקדם</p>
           </div>
 
-          {/* מייל */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">כתובת מייל</label>
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              required
-              placeholder="israel@example.com"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-          </div>
+          {/* Form */}
+          <form onSubmit={handleSubmit} style={{ padding: '32px 32px 36px' }}>
 
-          {/* טלפון */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">טלפון</label>
-            <input
-              type="tel"
-              name="phone"
-              value={form.phone}
-              onChange={handleChange}
-              placeholder="050-0000000"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-          </div>
+            {/* שם מלא */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>שם מלא *</label>
+              <input type="text" name="name" value={form.name} onChange={handleChange} required placeholder="ישראל ישראלי" style={inputStyle} />
+            </div>
 
-          {/* תיאור הבעיה */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">תיאור הבעיה</label>
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              required
-              rows={4}
-              placeholder="תאר את הבעיה בפירוט..."
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-            />
-          </div>
+            {/* מייל + טלפון */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+              <div>
+                <label style={labelStyle}>מייל *</label>
+                <input type="email" name="email" value={form.email} onChange={handleChange} required placeholder="mail@example.com" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>טלפון</label>
+                <input type="tel" name="phone" value={form.phone} onChange={handleChange} placeholder="050-0000000" style={inputStyle} />
+              </div>
+            </div>
 
-          {/* כפתור שליחה */}
-          <button
-            type="submit"
-            disabled={status === 'loading'}
-            className="bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700 transition disabled:opacity-60 mt-2"
-          >
-            {status === 'loading' ? 'שולח...' : 'שלח קריאה'}
-          </button>
+            {/* תיאור */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>תיאור הבעיה *</label>
+              <textarea name="description" value={form.description} onChange={handleChange} required rows={4} placeholder="תאר את הבעיה בפירוט..." style={{ ...inputStyle, resize: 'none', height: 110 }} />
+            </div>
 
-          {status === 'error' && (
-            <p className="text-red-500 text-center text-sm">משהו השתבש. נסה שוב.</p>
-          )}
-        </form>
+            {/* צילומי מסך */}
+            <div style={{ marginBottom: 28 }}>
+              <label style={labelStyle}>
+                צילומי מסך <span style={{ color: '#94a3b8', fontWeight: 400 }}>(אופציונלי)</span>
+              </label>
+              <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 18 }}>📋</span>
+                <span style={{ fontSize: 13, color: '#64748b' }}>
+                  פשוט <strong style={{ color: '#1e293b' }}>Ctrl+V</strong> להדבקת צילום מסך
+                </span>
+              </div>
+              {/* תצוגת תמונות שהודבקו */}
+              {pastedImages.length > 0 && (
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                  {pastedImages.map((img, i) => (
+                    <div key={i} style={{ position: 'relative' }}>
+                      <img src={img.preview} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 10, border: '2px solid #e0e7ff' }} />
+                      <button type="button" onClick={() => setPastedImages(p => p.filter((_, j) => j !== i))}
+                        style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* כפתור שליחה */}
+            <button type="submit" disabled={status === 'loading'}
+              style={{ width: '100%', background: status === 'loading' ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 14, padding: '15px 0', fontSize: 16, fontWeight: 700, cursor: status === 'loading' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              {status === 'loading'
+                ? <><SpinnerIcon /> שולח...</>
+                : 'שלח קריאה ←'}
+            </button>
+
+            {status === 'error' && (
+              <p style={{ color: '#ef4444', textAlign: 'center', fontSize: 13, marginTop: 12, background: '#fef2f2', padding: '8px 0', borderRadius: 8 }}>
+                משהו השתבש — נסה שוב
+              </p>
+            )}
+          </form>
+        </div>
       </div>
     </div>
+  )
+}
+
+// ===== סטיילים וקומפוננטים עזר =====
+const labelStyle = {
+  display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6
+}
+const inputStyle = {
+  width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '11px 14px',
+  fontSize: 14, color: '#1e293b', background: '#f8fafc', outline: 'none', boxSizing: 'border-box',
+  fontFamily: 'system-ui, sans-serif', direction: 'rtl'
+}
+
+function SpinnerIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 0.8s linear infinite' }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
+    </svg>
   )
 }
