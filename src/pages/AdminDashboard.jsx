@@ -88,6 +88,11 @@ function TicketCard({ ticket, onResolve }) {
           <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: '#eef2ff', color: '#6366f1' }}>
             {ticket.project || 'כללי'}
           </span>
+          {ticket.type && (
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: ticket.type === 'bug' ? '#fef3c7' : '#f0fdf4', color: ticket.type === 'bug' ? '#92400e' : '#166534' }}>
+              {ticket.type === 'bug' ? '🐛 תקלה' : '✨ פיתוח'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -262,7 +267,8 @@ export default function AdminDashboard() {
         <div style={{ padding: '24px 32px 48px' }}>
 
           {/* סינונים */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+            {/* סטטוס */}
             {[['open','פתוחות'], ['resolved','טופלו'], ['all','הכל']].map(([f, label]) => (
               <button key={f} onClick={() => setFilter(f)}
                 style={{ background: filter === f ? '#6366f1' : '#fff', color: filter === f ? '#fff' : '#475569', border: '1.5px solid', borderColor: filter === f ? '#6366f1' : '#e2e8f0', borderRadius: 10, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -270,13 +276,13 @@ export default function AdminDashboard() {
               </button>
             ))}
 
-            {/* סינון פרויקט */}
-            {projects.length > 2 && projects.map(p => (
-              <button key={p} onClick={() => setProjectFilter(p)}
-                style={{ background: projectFilter === p ? '#eef2ff' : '#fff', color: projectFilter === p ? '#6366f1' : '#94a3b8', border: '1.5px solid', borderColor: projectFilter === p ? '#c7d2fe' : '#e2e8f0', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                {p === 'all' ? 'כל הפרויקטים' : p}
-              </button>
-            ))}
+            {/* סינון פרויקט — dropdown */}
+            <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}
+              style={{ border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '8px 14px', fontSize: 13, color: '#475569', background: '#fff', cursor: 'pointer', outline: 'none', direction: 'rtl' }}>
+              {projects.map(p => (
+                <option key={p} value={p}>{p === 'all' ? 'כל הפרויקטים' : p}</option>
+              ))}
+            </select>
           </div>
 
           {/* רשימת קריאות */}
